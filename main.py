@@ -40,6 +40,7 @@ async def extract_images(file: UploadFile = File(...)):
         # วนทุกชีท เพื่อให้รองรับหลายแบบ
         for sheetname in wb.sheetnames:
             ws = wb[sheetname]
+            print("Sheet:", ws.title, "Images found:", len(getattr(ws, "_images", [])))
             for img in getattr(ws, "_images", []):
                 try:
                     img_bytes = io.BytesIO(img._data())  # ✅ เคล็ดลับที่ทำให้ดึงได้แม้เป็นภาพแปลก
@@ -64,4 +65,8 @@ async def extract_images(file: UploadFile = File(...)):
         return {"uploaded_slips": uploaded_links}
 
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return JSONResponse(content={
+            "uploaded_slips": uploaded_links,
+            "sheet_image_counts": sheet_image_counts
+})
+
