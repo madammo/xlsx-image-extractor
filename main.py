@@ -20,12 +20,17 @@ drive_service = build('drive', 'v3', credentials=credentials)
 
 app = FastAPI()
 
+
 @app.get("/")
 def root():
     return {"message": "API is working"}
 
+
 @app.post("/extract-images")
 async def extract_images(file: UploadFile = File(...)):
+    uploaded_links = []
+    sheet_image_counts = {}
+
     try:
         temp_dir = "temp_uploads"
         os.makedirs(temp_dir, exist_ok=True)
@@ -35,13 +40,14 @@ async def extract_images(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         wb = load_workbook(temp_file_path)
-        uploaded_links = []
 
-        # วนทุกชีท เพื่อให้รองรับหลายแบบ
         for sheetname in wb.sheetnames:
             ws = wb[sheetname]
-            print("Sheet:", ws.title, "Images found:", len(getattr(ws, "_images", [])))
-            for img in getattr(ws, "_images", []):
+            images = getattr(ws, "_images", [])
+            print("Sheet:", ws.title, "Images found:", len(images))
+            sheet_image_counts[sheetname] = len(images)
+
+            for img in images:
                 try:
                     img_bytes = io.BytesIO(img._data())  # ✅ เคล็ดลับที่ทำให้ดึงได้แม้เป็นภาพแปลก
                     pil_img = PILImage.open(img_bytes)
@@ -59,14 +65,18 @@ async def extract_images(file: UploadFile = File(...)):
                     ).execute()
 
                     uploaded_links.append(uploaded_file['webViewLink'])
+
                 except Exception as e:
                     print(f"❌ Error processing image: {e}")
 
-        return {"uploaded_slips": uploaded_links}
-
-    except Exception as e:
         return JSONResponse(content={
             "uploaded_slips": uploaded_links,
             "sheet_image_counts": sheet_image_counts
-})
+        })
 
+    except Exception as e:
+        print(f"❌ Top-level error: {e}")
+        return JSONResponse(content={
+            "uploaded_slips": uploaded_links,
+            "error": str(e)
+        })
