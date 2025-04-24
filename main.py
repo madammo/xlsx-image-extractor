@@ -9,7 +9,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # 🔒 ใช้ Service Account จาก Secret File ของ Render
-SERVICE_ACCOUNT_FILE = '/etc/secrets/n8ncheckslip.json'
+SERVICE_ACCOUNT_FILE = '/etc/secrets/n8ncheckslip-7a8a20abc6b5.json'
 FOLDER_ID = '1g1UedBOYIcIiqOn2MJxgWnQz4Gk2isTY'  # โฟลเดอร์ Google Drive ปลายทาง
 
 credentials = service_account.Credentials.from_service_account_file(
