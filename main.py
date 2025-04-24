@@ -3,27 +3,25 @@ from fastapi.responses import JSONResponse
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
 import os, shutil, uuid
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
 
-# === ตั้งค่าการเชื่อม Google Drive ===
-gauth = GoogleAuth()
-gauth.LoadCredentialsFile("credentials.json")
-if gauth.credentials is None:
-    gauth.LocalWebserverAuth()
-elif gauth.access_token_expired:
-    gauth.Refresh()
-else:
-    gauth.Authorize()
-gauth.SaveCredentialsFile("credentials.json")
-drive = GoogleDrive(gauth)
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-# === สร้าง API ===
+SERVICE_ACCOUNT_FILE = 'n8ncheckslip-7a8a20abc6b5.json'  # <== ใส่ไฟล์ JSON ที่ได้จากขั้นตอน 1
+FOLDER_ID = '1g1UedBOYIcIiqOn2MJxgWnQz4Gk2isTY'  # <== Folder ID ที่คุณส่งมา
+
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE,
+    scopes=['https://www.googleapis.com/auth/drive']
+)
+drive_service = build('drive', 'v3', credentials=credentials)
+
 app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"message": "FastAPI for image upload to Google Drive is running 🎉"}
+    return {"message": "API with Service Account is running 🎉"}
 
 @app.post("/extract-images")
 async def extract_images(file: UploadFile = File(...)):
@@ -39,21 +37,25 @@ async def extract_images(file: UploadFile = File(...)):
         ws = wb.active
 
         uploaded_links = []
+
         for i, img in enumerate(ws._images):
-            image_data = img.image if hasattr(img, 'image') else img
+            img_data = img.image if hasattr(img, 'image') else img
             file_name = f"slip_{uuid.uuid4().hex}.png"
             local_path = os.path.join(temp_dir, file_name)
-            image_data.save(local_path)
+            img_data.save(local_path)
 
-            # Upload ไป Google Drive
-            gfile = drive.CreateFile({
-                'title': file_name,
-                'parents': [{'id': '1g1UedBOYIcIiqOn2MJxgWnQz4Gk2isTY'}]
-            })
-            gfile.SetContentFile(local_path)
-            gfile.Upload()
-            gfile.InsertPermission({'type': 'anyone', 'value': 'anyone', 'role': 'reader'})
-            uploaded_links.append(gfile['alternateLink'])
+            media = MediaFileUpload(local_path, mimetype='image/png')
+            file_metadata = {
+                'name': file_name,
+                'parents': [FOLDER_ID]
+            }
+            uploaded_file = drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id,webViewLink'
+            ).execute()
+
+            uploaded_links.append(uploaded_file['webViewLink'])
 
         return {"uploaded_slips": uploaded_links}
 
