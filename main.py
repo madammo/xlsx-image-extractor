@@ -8,7 +8,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-SERVICE_ACCOUNT_FILE = 'n8ncheckslip-7a8a20abc6b5.json'  # <== ใส่ไฟล์ JSON ที่ได้จากขั้นตอน 1
+SERVICE_ACCOUNT_FILE = '/etc/secrets/n8ncheckslip-7a8a20abc6b5.json'  # <== ใส่ไฟล์ JSON ที่ได้จากขั้นตอน 1
 FOLDER_ID = '1g1UedBOYIcIiqOn2MJxgWnQz4Gk2isTY'  # <== Folder ID ที่คุณส่งมา
 
 credentials = service_account.Credentials.from_service_account_file(
