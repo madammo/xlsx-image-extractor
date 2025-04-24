@@ -1,5 +1,6 @@
 fastapi
 uvicorn
 openpyxl
-pydrive
 python-multipart
+google-api-python-client
+google-auth
