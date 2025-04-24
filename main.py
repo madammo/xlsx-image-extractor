@@ -1,15 +1,16 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from openpyxl import load_workbook
-from openpyxl.drawing.image import Image
-import os, shutil, uuid
+from PIL import Image as PILImage
+import os, shutil, uuid, io
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-SERVICE_ACCOUNT_FILE = '/etc/secrets/n8ncheckslip-7a8a20abc6b5.json'  # <== ใส่ไฟล์ JSON ที่ได้จากขั้นตอน 1
-FOLDER_ID = '1g1UedBOYIcIiqOn2MJxgWnQz4Gk2isTY'  # <== Folder ID ที่คุณส่งมา
+# 🔒 ใช้ Service Account จาก Secret File ของ Render
+SERVICE_ACCOUNT_FILE = '/etc/secrets/n8ncheckslip.json'
+FOLDER_ID = '1g1UedBOYIcIiqOn2MJxgWnQz4Gk2isTY'  # โฟลเดอร์ Google Drive ปลายทาง
 
 credentials = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE,
@@ -21,7 +22,7 @@ app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"message": "API with Service Account is running 🎉"}
+    return {"message": "API is working"}
 
 @app.post("/extract-images")
 async def extract_images(file: UploadFile = File(...)):
@@ -34,28 +35,31 @@ async def extract_images(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         wb = load_workbook(temp_file_path)
-        ws = wb.active
-
         uploaded_links = []
 
-        for i, img in enumerate(ws._images):
-            img_data = img.image if hasattr(img, 'image') else img
-            file_name = f"slip_{uuid.uuid4().hex}.png"
-            local_path = os.path.join(temp_dir, file_name)
-            img_data.save(local_path)
+        # วนทุกชีท เพื่อให้รองรับหลายแบบ
+        for sheetname in wb.sheetnames:
+            ws = wb[sheetname]
+            for img in getattr(ws, "_images", []):
+                try:
+                    img_bytes = io.BytesIO(img._data())  # ✅ เคล็ดลับที่ทำให้ดึงได้แม้เป็นภาพแปลก
+                    pil_img = PILImage.open(img_bytes)
 
-            media = MediaFileUpload(local_path, mimetype='image/png')
-            file_metadata = {
-                'name': file_name,
-                'parents': [FOLDER_ID]
-            }
-            uploaded_file = drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id,webViewLink'
-            ).execute()
+                    file_name = f"slip_{uuid.uuid4().hex}.jpg"
+                    local_path = os.path.join(temp_dir, file_name)
+                    pil_img.save(local_path, format="JPEG")
 
-            uploaded_links.append(uploaded_file['webViewLink'])
+                    media = MediaFileUpload(local_path, mimetype='image/jpeg')
+                    file_metadata = {'name': file_name, 'parents': [FOLDER_ID]}
+                    uploaded_file = drive_service.files().create(
+                        body=file_metadata,
+                        media_body=media,
+                        fields='id,webViewLink'
+                    ).execute()
+
+                    uploaded_links.append(uploaded_file['webViewLink'])
+                except Exception as e:
+                    print(f"❌ Error processing image: {e}")
 
         return {"uploaded_slips": uploaded_links}
 
