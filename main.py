@@ -7,6 +7,11 @@ import os, shutil, uuid, io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from fastapi.staticfiles import StaticFiles
+
+app = FastAPI()
+app.mount("/tmp", StaticFiles(directory="temp_uploads"), name="tmp")
+
 
 # 🔒 ใช้ Service Account จาก Secret File ของ Render
 SERVICE_ACCOUNT_FILE = '/etc/secrets/n8ncheckslip-7a8a20abc6b5.json'
@@ -18,13 +23,9 @@ credentials = service_account.Credentials.from_service_account_file(
 )
 drive_service = build('drive', 'v3', credentials=credentials)
 
-app = FastAPI()
-
-
 @app.get("/")
 def root():
     return {"message": "API is working"}
-
 
 @app.post("/extract-images")
 async def extract_images(file: UploadFile = File(...)):
@@ -44,28 +45,20 @@ async def extract_images(file: UploadFile = File(...)):
         for sheetname in wb.sheetnames:
             ws = wb[sheetname]
             images = getattr(ws, "_images", [])
-            print("Sheet:", ws.title, "Images found:", len(images))
             sheet_image_counts[sheetname] = len(images)
 
             for img in images:
                 try:
-                    img_bytes = io.BytesIO(img._data())  # ✅ เคล็ดลับที่ทำให้ดึงได้แม้เป็นภาพแปลก
+                    img_bytes = io.BytesIO(img._data())
                     pil_img = PILImage.open(img_bytes)
 
                     file_name = f"slip_{uuid.uuid4().hex}.jpg"
                     local_path = os.path.join(temp_dir, file_name)
                     pil_img.save(local_path, format="JPEG")
 
-                    media = MediaFileUpload(local_path, mimetype='image/jpeg')
-                    file_metadata = {'name': file_name, 'parents': [FOLDER_ID]}
-                    uploaded_file = drive_service.files().create(
-                        body=file_metadata,
-                        media_body=media,
-                        fields='id,webViewLink'
-                    ).execute()
-
-                    uploaded_links.append(uploaded_file['webViewLink'])
-
+                    # ✅ Generate URL to image file on Render
+                    file_url = f"https://extractxlsx.onrender.com/tmp/{file_name}"
+                    uploaded_links.append(file_url)
                 except Exception as e:
                     print(f"❌ Error processing image: {e}")
 
@@ -80,3 +73,10 @@ async def extract_images(file: UploadFile = File(...)):
             "uploaded_slips": uploaded_links,
             "error": str(e)
         })
+ finally:
+        try:
+            # ✅ Cleanup รูป JPG ใน temp_uploads
+            for f in glob.glob(os.path.join(temp_dir, "*.jpg")):
+                os.remove(f)
+        except Exception as cleanup_error:
+            print(f"❌ Error cleaning up temp files: {cleanup_error}")
